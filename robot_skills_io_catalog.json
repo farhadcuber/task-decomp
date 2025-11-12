@@ -1,0 +1,152 @@
+[
+  {
+    "description": "Autonomous aerial unit designed for surveillance, monitoring, and rapid response in urban environments.",
+    "robot": "Patrol_Drone",
+    "skills": [
+      {
+        "explanation": "Autonomous overhead sweep of a defined area to detect points of interest or anomalies with area coverage reporting.",
+        "possible_inputs": "target_area(poly\/geojson); altitude_range(m); scan_resolution(m\/px); time_window",
+        "possible_outputs": "coverage_map; geotagged_observations; potential_targets(list); scan_telemetry",
+        "skill": "Patrol_Drone:Aerial_Scan"
+      },
+      {
+        "explanation": "Runs onboard\/edge vision models to identify specified objects (e.g., bag, scooter, person) in the live feed or recent captures.",
+        "possible_inputs": "video_feed_ref; target_classes(list); confidence_threshold; roi(optional)",
+        "possible_outputs": "detections(list: class, bbox, confidence); track_ids; snapshots",
+        "skill": "Patrol_Drone:Object_Recognition"
+      },
+      {
+        "explanation": "Provides a low-latency live video stream from the drone camera to authorized viewers and\/or records the session.",
+        "possible_inputs": "camera_id; stream_bitrate; duration; viewer_tokens(list)",
+        "possible_outputs": "stream_url; recording_ref; QoS_metrics(latency, fps)",
+        "skill": "Patrol_Drone:Live_Video_Relay"
+      },
+      {
+        "explanation": "Broadcasts a synthesized or pre-recorded audio message to people in a defined zone while logging coverage\/response metrics.",
+        "possible_inputs": "message_text; language; repeat_count; area_mask",
+        "possible_outputs": "announcement_log; ack_stats(people_detected, dwell_time)",
+        "skill": "Patrol_Drone:Audio_Announcement"
+      }
+    ]
+  },
+  {
+    "description": "Autonomous ground vehicle designed for package delivery in urban environments.",
+    "robot": "Courier_Bot",
+    "skills": [
+      {
+        "explanation": "Verifies order at merchant, authenticates with a code, and loads the item into a secured compartment.",
+        "possible_inputs": "merchant_id; pickup_code; item_descriptor; pickup_window",
+        "possible_outputs": "pickup_receipt; package_id; pickup_timestamp",
+        "skill": "Courier_Bot:Pickup_From_Merchant"
+      },
+      {
+        "explanation": "Plans and executes a curbside-safe route between two points, respecting pedestrian rules and dynamic obstacles.",
+        "possible_inputs": "start_point; end_point; nav_constraints(no-stairs, max_speed); priority_level",
+        "possible_outputs": "route_trace(gps_path); eta; nav_events(obstacles, re-routes)",
+        "skill": "Courier_Bot:Sidewalk_Navigation"
+      },
+      {
+        "explanation": "Uses authorized credentials to pass entrances, operate doors\/elevators, and reach the designated indoor delivery point.",
+        "possible_inputs": "building_id; access_method(QR\/NFC\/code); floor; delivery_point",
+        "possible_outputs": "access_log(door_id,timestamp); elevator_used(bool); access_result",
+        "skill": "Courier_Bot:Building_Access"
+      },
+      {
+        "explanation": "Performs authenticated transfer of the parcel to the intended recipient and records proof of delivery.",
+        "possible_inputs": "recipient_id; verification_method(PIN\/face\/QR); package_id",
+        "possible_outputs": "handoff_confirmation(sig\/photo); recipient_ack; chain_of_custody_update",
+        "skill": "Courier_Bot:Secure_Handoff"
+      }
+    ]
+  },
+  {
+    "description": "Autonomous ground vehicle designed for light maintenance, inspection, and environmental sensing tasks in urban settings.",
+    "robot": "Utility_Rover",
+    "skills": [
+      {
+        "explanation": "Collects ground-level measurements for safety and maintenance diagnostics (e.g., smoke, temperature, AQI, noise).",
+        "possible_inputs": "target_location; sensor_profile(smoke\/temp\/air_quality\/noise); sampling_rate; duration",
+        "possible_outputs": "sensor_timeseries; hazard_score; anomaly_flags; geo_report",
+        "skill": "Utility_Rover:Environmental_Sensing"
+      },
+      {
+        "explanation": "Executes simple corrective actions on public assets or paths within safety limits and tool capability.",
+        "possible_inputs": "work_order_id; task_type(clear_branch\/tighten_bolt\/reset_breaker); site_constraints",
+        "possible_outputs": "repair_status; before_after_photos; time_spent; followup_required(bool)",
+        "skill": "Utility_Rover:Minor_Repair"
+      },
+      {
+        "explanation": "Picks up small waste items\/bags from specified locations and transports them to designated collection points.",
+        "possible_inputs": "pickup_points(list); waste_type(bag\/recyclables\/e-waste); load_limit",
+        "possible_outputs": "collected_items_count; disposal_site_ref; route_log",
+        "skill": "Utility_Rover:Waste_Collection"
+      },
+      {
+        "explanation": "Places or updates a scannable tag on-site and registers it in the city maintenance\/incident system.",
+        "possible_inputs": "asset_id; tag_type(maintenance\/hazard); location; notes",
+        "possible_outputs": "tag_id; tag_photo; registry_update_url",
+        "skill": "Utility_Rover:QR_Tagging"
+      }
+    ]
+  },
+  {
+    "description": "Lightweight aerial unit designed for rapid response, light item transport, and location marking in urban environments.",
+    "robot": "Helper_Drone",
+    "skills": [
+      {
+        "explanation": "Quick-launches to a nearby point to provide immediate presence, observation, or lightweight support.",
+        "possible_inputs": "dispatch_point; urgency_level; loiter_pattern; max_flight_time",
+        "possible_outputs": "arrival_timestamp; hover_status; dispatch_log",
+        "skill": "Helper_Drone:Rapid_Dispatch"
+      },
+      {
+        "explanation": "Collects very small\/light objects using a simple end-effector under appropriate safety limits.",
+        "possible_inputs": "item_descriptor(<0.5kg); pickup_coords; grasp_profile(magnet\/gripper)",
+        "possible_outputs": "pickup_success(bool); item_photo; weight_estimate",
+        "skill": "Helper_Drone:Light_Item_Pickup"
+      },
+      {
+        "explanation": "Performs precise balcony drop-off using stable hover and gentle release with visual confirmation.",
+        "possible_inputs": "recipient_unit; balcony_coords; approach_vector; safety_margin",
+        "possible_outputs": "drop_verification(photo\/video); drop_timestamp; retry_count",
+        "skill": "Helper_Drone:Dropoff_Balcony"
+      },
+      {
+        "explanation": "Marks an exact spot with a visual\/audible signal and shares its coordinates\/link with authorized users.",
+        "possible_inputs": "target_coords; ping_method(QR\/LED\/beep); share_with(user_ids)",
+        "possible_outputs": "ping_confirmation; share_link; visibility_radius",
+        "skill": "Helper_Drone:Location_Ping"
+      }
+    ]
+  },
+  {
+    "description": "Autonomous ground vehicle designed to facilitate remote presence, communication, and guided navigation in urban environments.",
+    "robot": "Telepresence_Bot",
+    "skills": [
+      {
+        "explanation": "Initiates a real-time telepresence session allowing the requester to see\/speak with people on site.",
+        "possible_inputs": "caller_id; callee_id; meeting_purpose; privacy_mode",
+        "possible_outputs": "call_session_id; join_link; audio_video_diagnostics",
+        "skill": "Telepresence_Bot:Video_Call_Setup"
+      },
+      {
+        "explanation": "Authenticates and operates building elevators to move between floors as part of a guided escort or delivery.",
+        "possible_inputs": "elevator_bank_id; floor_request; access_token",
+        "possible_outputs": "ride_log; reached_floor; wait_time",
+        "skill": "Telepresence_Bot:Elevator_Operation"
+      },
+      {
+        "explanation": "Plans and executes wayfinding inside buildings while adapting to obstacles, signage, and accessibility constraints.",
+        "possible_inputs": "start_point; destination_point; building_map; accessibility(needs_ramp)",
+        "possible_outputs": "path_taken; eta; arrival_status; nav_handoffs",
+        "skill": "Telepresence_Bot:Indoor_Navigation"
+      },
+      {
+        "explanation": "Notifies on-site personnel with context (who\/where\/why) and tracks acknowledgments and follow-ups.",
+        "possible_inputs": "alert_message; staff_group(front_desk\/security); escalation_policy",
+        "possible_outputs": "alert_receipts; response_time; escalation_log",
+        "skill": "Telepresence_Bot:Staff_Alert"
+      }
+    ]
+  }
+]
