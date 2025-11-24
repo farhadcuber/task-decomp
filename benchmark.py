@@ -171,7 +171,7 @@ def run_models(
 
 def parse_args():
     ap = argparse.ArgumentParser(description="Benchmark multiple models via OpenRouter (single API key)")
-    ap.add_argument("--prompt", default="PROMPT_1.txt", help="Path to base prompt file")
+    ap.add_argument("--prompt", default="PROMPT.txt", help="Path to base prompt file")
     ap.add_argument("--input", default="tasks.csv", help="Path to tasks CSV")
     ap.add_argument("--outdir", default="out", help="Output directory")
     ap.add_argument("--max-rows", type=int, default=0, help="Max rows from input (0 = all)")
