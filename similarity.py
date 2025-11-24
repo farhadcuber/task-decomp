@@ -70,6 +70,73 @@ def find_model_files(outputs_dir: str):
     return files
 
 
+def load_model_outputs(outputs_dir: str):
+    """Load llm_*.csv files from outputs_dir and return
+    (model_names, id_to_decomp_per_model, present_id_sets).
+
+    This is a shared loader used by other scripts to keep parsing consistent.
+    """
+    if not os.path.isdir(outputs_dir):
+        print(f"[ERROR] Outputs directory not found: {outputs_dir}")
+        sys.exit(2)
+
+    files = sorted([f for f in os.listdir(outputs_dir) if f.startswith("llm_") and f.endswith(".csv")])
+    if not files:
+        print(f"[ERROR] No llm_*.csv files found in {outputs_dir}")
+        sys.exit(2)
+
+    model_names = []
+    id_to_decomp_per_model = []
+    present_id_sets = []
+
+    for fname in files:
+        fpath = os.path.join(outputs_dir, fname)
+        try:
+            df = pd.read_csv(fpath, sep=",")
+        except Exception as e:
+            print(f"[WARN] Skipping {fname}: read error: {e}")
+            continue
+
+        if "ID" not in df.columns or "Decomposition" not in df.columns:
+            print(f"[WARN] Skipping {fname}: missing 'ID' or 'Decomposition' column")
+            continue
+
+        model_name = fname[len("llm_"):-len(".csv")]
+        if "model" in df.columns:
+            nn = df["model"].dropna().astype(str)
+            if not nn.empty and nn.iloc[0].strip():
+                model_name = nn.iloc[0].strip()
+
+        id_series = df["ID"].astype(str).tolist()
+        dec_series = df["Decomposition"].astype(str).tolist()
+        id_to_decomp = {}
+        present_ids = set()
+        for rid, dec in zip(id_series, dec_series):
+            if rid not in id_to_decomp:
+                id_to_decomp[rid] = dec
+                present_ids.add(rid)
+
+        model_names.append(model_name)
+        id_to_decomp_per_model.append(id_to_decomp)
+        present_id_sets.append(present_ids)
+
+    return model_names, id_to_decomp_per_model, present_id_sets
+
+
+def compute_sims_from_map(model_name: str, id_to_decomp: dict, ids: List[str], gt_list: List[str]):
+    """Compute similarity list and present_ids from an ID->decomp mapping."""
+    present_ids = set(id_to_decomp.keys())
+    sims = []
+    for idx, gt in zip(ids, gt_list):
+        resp = id_to_decomp.get(idx, "")
+        gt_tokens = tokenize_plan(gt)
+        resp_tokens = tokenize_plan(resp)
+        sim = lcs_similarity(gt_tokens, resp_tokens)
+        sims.append(round(float(sim), 6))
+
+    return model_name, sims, present_ids
+
+
 def process_model_file(fpath: str, ids: List[str], gt_list: List[str]):
     try:
         df = pd.read_csv(fpath, sep=",")
@@ -134,15 +201,13 @@ def main():
 
     out_path = args.out if args.out else os.path.join(args.outputs_dir, "similarity.csv")
 
-    files = find_model_files(args.outputs_dir)
+    # Load model outputs using shared loader
+    model_names, id_to_decomp_per_model, present_id_sets = load_model_outputs(args.outputs_dir)
 
-    # Process model files and collect their results + present ID sets
-    model_results = []  # list of tuples (model_name, sims_list, present_ids_set)
-    for fname in files:
-        fpath = os.path.join(args.outputs_dir, fname)
-        res = process_model_file(fpath, ids, gt_list)
-        if res is None:
-            continue
+    # Compute sims for each model from the loaded maps
+    model_results = []
+    for model_name, id_to_decomp in zip(model_names, id_to_decomp_per_model):
+        res = compute_sims_from_map(model_name, id_to_decomp, ids, gt_list)
         model_results.append(res)
 
     if not model_results:

@@ -4,55 +4,7 @@ import os
 import sys
 import pandas as pd
 from typing import List
-from similarity import tokenize_plan, lcs_similarity, read_tasks
-
-
-def load_model_outputs(outputs_dir: str):
-    """Load llm_*.csv files from outputs_dir. Returns (model_names, id_to_decomp_per_model, present_id_sets).
-
-    Each id_to_decomp_per_model entry is a dict mapping ID->Decomposition.
-    """
-    files = sorted([f for f in os.listdir(outputs_dir) if f.startswith("llm_") and f.endswith(".csv")])
-    if not files:
-        print(f"[ERROR] No llm_*.csv files found in {outputs_dir}")
-        sys.exit(2)
-
-    model_names = []
-    id_to_decomp_per_model = []
-    present_id_sets = []
-
-    for fname in files:
-        fpath = os.path.join(outputs_dir, fname)
-        try:
-            df = pd.read_csv(fpath, sep=",")
-        except Exception as e:
-            print(f"[WARN] Skipping {fname}: read error: {e}")
-            continue
-
-        if "ID" not in df.columns or "Decomposition" not in df.columns:
-            print(f"[WARN] Skipping {fname}: missing 'ID' or 'Decomposition' column")
-            continue
-
-        model_name = fname[len("llm_"):-len(".csv")]
-        if "model" in df.columns and len(df) > 0 and pd.notna(df["model"].iloc[0]):
-            m0 = str(df["model"].iloc[0]).strip()
-            if m0:
-                model_name = m0
-
-        id_series = df["ID"].astype(str).tolist()
-        dec_series = df["Decomposition"].astype(str).tolist()
-        id_to_decomp = {}
-        present_ids = set()
-        for rid, dec in zip(id_series, dec_series):
-            if rid not in id_to_decomp:
-                id_to_decomp[rid] = dec
-                present_ids.add(rid)
-
-        model_names.append(model_name)
-        id_to_decomp_per_model.append(id_to_decomp)
-        present_id_sets.append(present_ids)
-
-    return model_names, id_to_decomp_per_model, present_id_sets
+from similarity import tokenize_plan, lcs_similarity, read_tasks, load_model_outputs
 
 
 def compute_included_ids(ids: List[str], present_id_sets: List[set]) -> List[str]:
