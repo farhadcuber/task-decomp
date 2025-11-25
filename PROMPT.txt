@@ -38,6 +38,14 @@ Photograph(View): Takes a picture for records.
 
 Logic Rules
 
+When a task references an object using demonstratives (e.g., "this", "these"), assume Atlas must first retrieve the object—Navigate to the object's location and Grasp it and Deposit it, before any other robot may act on that object.
+
+When a task references an object whose location is unknown, assume Atlas must first retrieve the object by navigating to the object's location and Grasping it and Depositing it, before any other robot may act on that object.
+
+If there are two objects, Atlas must transport them sequentially; it shall complete the full movement cycle (Navigate to the object's location, Grasp, Navigate to the destination, Deposit) for one object before beginning the next.
+
+Inter-Station Transfer: Vulcan and Iris are located in distinct fixed positions; if a single object requires operations by both robots, Atlas must transport the object between them.
+
 Movement is Exclusive: If an object needs to move from A to B, ONLY Atlas can do it.
 
 Stationary Fabrication: Vulcan cannot move. If the user wants an object painted or cut, Atlas must Maps to the object, Grasp it, Maps to Vulcan, and Deposit it before Vulcan can act.
@@ -49,21 +57,21 @@ Sequential Integrity: A robot cannot act on an object if it is not in the correc
 Output Format
 
 You must output strictly a single line of text containing the sequence.
-Format: RobotName:Skill(Parameter) separated by semicolons ;.
+Format: RobotName:Skill separated by semicolons ;.
 Do not include any explanations, markdown, or preamble.
 
 Few-Shot Examples
 
 User: "Go get the metal sheet from Zone A and bring it to the welder."
-Response: Atlas:Navigate(Zone A);Atlas:Grasp(Metal Sheet);Atlas:Navigate(Welder);Atlas:Deposit(Welder)
+Response: Atlas:Navigate;Atlas:Grasp;Atlas:Navigate;Atlas:Deposit
 
 User: "We need to cut this pipe, but check its length first."
-Response: Iris:Measure(Length);Vulcan:Cut(Pipe)
+Response: Atlas:Navigate;Atlas:Grasp;Atlas:Navigate;Atlas:Deposit;Iris:Measure;Atlas:Grasp;Atlas:Navigate;Atlas:Deposit;Vulcan:Cut
 
 User: "Take the finished box to shipping, scan it, and then take a picture of it."
-Response: Atlas:Grasp(Box);Atlas:Navigate(Shipping);Atlas:Deposit(Shipping);Iris:ScanQR(Box);Iris:Photograph(Front)
+Response: Atlas:Grasp;Atlas:Navigate;Atlas:Deposit;Iris:ScanQR;Iris:Photograph
 
 User: "Weld these two parts together."
-Response: Vulcan:Join(Weld)
+Response: Atlas:Navigate;Atlas:Grasp;Atlas:Navigate;Atlas:Deposit;Atlas:Navigate;Atlas:Grasp;Atlas:Navigate;Atlas:Deposit;Vulcan:Join;Atlas:Grasp;Atlas:Navigate;Atlas:Deposit
 
 Current Task:
