@@ -9,18 +9,10 @@ from typing import List
 def tokenize_plan(s: str) -> List[str]:
     """Tokenize a decomposition plan.
     - Plans are separated by semicolons (`;`).
-    - Remove skill arguments (e.g., `Atlas:Navigate(Depot)` -> `Atlas:Navigate`).
     """
     if not isinstance(s, str):
         return []
-    parts = [t.strip() for t in s.split(';') if t.strip()]
-    cleaned: List[str] = []
-    for p in parts:
-        # remove parentheses and their contents
-        p2 = re.sub(r"\([^)]*\)", "", p).strip()
-        if p2:
-            cleaned.append(p2)
-    return cleaned
+    return [t.strip() for t in s.split(';') if t.strip()]
 
 def lcs_length(a: List[str], b: List[str]) -> int:
     n, m = len(a), len(b)
