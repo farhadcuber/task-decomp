@@ -2,8 +2,9 @@
 import argparse
 import os
 import sys
+import random
 import pandas as pd
-from typing import List
+from typing import List, Dict
 from similarity import tokenize_plan, lcs_similarity, read_tasks, load_model_outputs
 
 
@@ -15,73 +16,136 @@ def compute_included_ids(ids: List[str], present_id_sets: List[set]) -> List[str
     return [i for i in ids if i in common]
 
 
-def process_task_id(idx: str, model_names: List[str], id_to_decomp_per_model: List[dict], ids: List[str], gt_list: List[str], outdir: str):
-    """Build pairwise matrix for a single task ID, write TSV to outdir, and return best-row info dict."""
-    # build token lists for each model for this ID
-    model_token_lists = [tokenize_plan(id_to_decomp.get(idx, "")) for id_to_decomp in id_to_decomp_per_model]
+class LLM:
+    """Represents an LLM with name, current reputation, and score history."""
+    def __init__(self, name: str, initial_reputation: float = 4.0):
+        self.name = name
+        self.current_reputation = float(initial_reputation)
+        self.scores: List[float] = []
 
-    # build NxN similarity matrix
-    matrix = []
-    for a in range(len(model_names)):
-        row_vals = []
-        a_tokens = model_token_lists[a]
-        for b in range(len(model_names)):
-            b_tokens = model_token_lists[b]
-            sim = 1.0 if a == b else lcs_similarity(a_tokens, b_tokens)
-            row_vals.append(round(sim, 2))
-        matrix.append(row_vals)
-
-    df_mat = pd.DataFrame(matrix, columns=model_names)
-    df_mat["sum"] = df_mat.sum(axis=1).round(2)
-
-    best_idx = int(df_mat["sum"].idxmax())
-    best_model = model_names[best_idx]
-    best_sum = float(df_mat.loc[best_idx, "sum"])
-
-    # similarity of best model to GT
-    gt_decomp = dict(zip(ids, gt_list)).get(idx, "")
-    best_tokens = model_token_lists[best_idx]
-    sim_to_gt = round(lcs_similarity(best_tokens, tokenize_plan(gt_decomp)), 2)
-
-    # write per-task matrix
-    out_name = f"task_{idx}_pairwise_similarity.tsv"
-    out_path = os.path.join(outdir, out_name)
-    df_mat.to_csv(out_path, sep="\t", index=False, float_format="%.2f")
-    print(f"Wrote {out_path}")
-
-    return {
-        "task_id": idx,
-        "best_model": best_model,
-        "row_sum": f"{best_sum:.2f}",
-        "sim_to_gt": f"{sim_to_gt:.2f}",
-    }
+    def update_reputation(self, score: float):
+        self.scores.append(float(score))
+        self.current_reputation = sum(self.scores) / len(self.scores)
 
 
-def write_summary_and_print_overall(best_rows: List[dict], outdir: str):
-    """Write trimmed summary CSV and print overall average to stdout."""
-    trim_df = pd.DataFrame([
-        {"ID": r["task_id"], "Score": r["row_sum"], "Similarity": r["sim_to_gt"], "Model": r["best_model"]}
-        for r in best_rows
-    ], columns=["ID", "Score", "Similarity", "Model"]) if best_rows else pd.DataFrame(columns=["ID", "Score", "Similarity", "Model"])
+class Oracle:
+    """Runs pairwise similarity, selects best model per task using score * reputation, and tracks reputation history."""
+    def __init__(self, model_names: List[str], id_to_decomp_per_model: List[Dict[str, str]]):
+        self.models: List[LLM] = [LLM(m) for m in model_names]
+        self.model_names = model_names
+        self.id_to_decomp_per_model = id_to_decomp_per_model
+        self.history: List[Dict[str, float]] = []  # per task, map model name -> reputation
 
-    summary_path = os.path.join(outdir, "selected_model_similarity_to_ground_truth.csv")
-    trim_df.to_csv(summary_path, index=False)
-    print(f"Wrote selected-model summary to {summary_path}")
+    def _build_similarity_matrix(self, idx: str) -> pd.DataFrame:
+        token_lists = [tokenize_plan(m.get(idx, "")) for m in self.id_to_decomp_per_model]
+        matrix = []
+        for a in range(len(self.models)):
+            a_tokens = token_lists[a]
+            row_vals = []
+            for b in range(len(self.models)):
+                b_tokens = token_lists[b]
+                sim = 1.0 if a == b else lcs_similarity(a_tokens, b_tokens)
+                row_vals.append(round(sim, 2))
+            matrix.append(row_vals)
+        df = pd.DataFrame(matrix, columns=self.model_names)
+        df["sum"] = df.sum(axis=1).round(2)
+        return df, token_lists
 
-    sims = pd.to_numeric([r.get("sim_to_gt") for r in best_rows], errors="coerce")
-    overall_avg = float(pd.Series(sims).astype(float).mean()) if len(sims) else 0.0
-    print(f"Overall average similarity to GT: {overall_avg:.4f}")
+    def select_model(self, df_mat: pd.DataFrame) -> int:
+        weighted = []
+        for i, mdl in enumerate(self.models):
+            score = float(df_mat.loc[i, "sum"])
+            weighted.append(score * mdl.current_reputation)
+        max_w = max(weighted)
+        candidates = [i for i, w in enumerate(weighted) if w == max_w]
+        return random.choice(candidates)
+
+    def update_after_task(self, task_id: str):
+        snapshot = {m.name: m.current_reputation for m in self.models}
+        self.history.append({"ID": task_id, **snapshot})
+
+    def run_task(self, idx: str, gt_decomp: str, outdir: str) -> dict:
+        df_mat, token_lists = self._build_similarity_matrix(idx)
+        best_idx = self.select_model(df_mat)
+        best_model = self.models[best_idx]
+        best_sum = float(df_mat.loc[best_idx, "sum"])
+        
+        # Update reputation for ALL models based on their scores
+        for i, mdl in enumerate(self.models):
+            score = float(df_mat.loc[i, "sum"])
+            mdl.update_reputation(score)
+        
+        self.update_after_task(idx)
+
+        # similarity to GT
+        sim_to_gt = round(lcs_similarity(token_lists[best_idx], tokenize_plan(gt_decomp)), 2)
+
+        # write per-task matrix
+        out_name = f"task_{idx}_pairwise_similarity.tsv"
+        out_path = os.path.join(outdir, out_name)
+        df_mat.to_csv(out_path, sep="\t", index=False, float_format="%.2f")
+
+        return {
+            "task_id": idx,
+            "best_model": best_model.name,
+            "row_sum": f"{best_sum:.2f}",
+            "sim_to_gt": f"{sim_to_gt:.2f}",
+        }
+
+    def run_all_tasks(self, included_ids: List[str], ids: List[str], gt_list: List[str], requests_list: List[str], outdir: str):
+        best_rows = []
+        for idx in included_ids:
+            gt_decomp = dict(zip(ids, gt_list)).get(idx, "")
+            best_info = self.run_task(idx, gt_decomp, outdir)
+            # enrich with request text if desired later
+            best_info["request"] = dict(zip(ids, requests_list)).get(idx, "")
+            best_rows.append(best_info)
+
+        self.write_summary(best_rows, outdir)
 
 
-def main():
+    def write_summary(self, best_rows: List[dict], outdir: str):
+        """Write trimmed summary CSV, reputation history CSV, and print overall average to stdout."""
+        trim_df = pd.DataFrame([
+            {"ID": r["task_id"], "Score": r["row_sum"], "Similarity": r["sim_to_gt"], "Model": r["best_model"]}
+            for r in best_rows
+        ], columns=["ID", "Score", "Similarity", "Model"]) if best_rows else pd.DataFrame(columns=["ID", "Score", "Similarity", "Model"])
+
+        summary_path = os.path.join(outdir, "selected_model_similarity_to_ground_truth.csv")
+        trim_df.to_csv(summary_path, index=False)
+        print(f"Wrote selected-model summary to {summary_path}")
+
+        # Write reputation history
+        reputation_rows = []
+        for rep_entry in self.history:
+            row = {"ID": rep_entry["ID"]}
+            for model_name in self.model_names:
+                row[model_name] = f"{rep_entry.get(model_name, 0.0):.4f}"
+            reputation_rows.append(row)
+        
+        rep_df = pd.DataFrame(reputation_rows)
+        reputation_path = os.path.join(outdir, "reputations.csv")
+        rep_df.to_csv(reputation_path, index=False)
+        print(f"Wrote reputation history to {reputation_path}")
+
+        sims = pd.to_numeric([r.get("sim_to_gt") for r in best_rows], errors="coerce")
+        overall_avg = float(pd.Series(sims).astype(float).mean()) if len(sims) else 0.0
+        print(f"Overall average similarity to GT: {overall_avg:.4f}")
+
+
+def get_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Pairwise similarity matrices (+row sums) and best-model-vs-GT summary.")
     ap.add_argument("--tasks", default="tasks.csv", help="Tasks CSV with  ID,Task,Decomposition")
     ap.add_argument("--outputs_dir", default="outputs", help="Directory containing llm_*.csv files")
     ap.add_argument("--outdir", default="pairwise_similarity", help="Output directory for per-task TSV matrices")
-    args = ap.parse_args()
+    return ap.parse_args()
+
+
+def main():
+    args = get_args()
 
     # Read tasks
-    tasks_df, ids, requests_list, gt_list = read_tasks(args.tasks)
+    ids, requests_list, gt_list = read_tasks(args.tasks)
 
     # Load model outputs
     if not os.path.isdir(args.outputs_dir):
@@ -101,14 +165,9 @@ def main():
     outdir = os.path.join(args.outputs_dir, args.outdir)
     os.makedirs(outdir, exist_ok=True)
 
-    best_rows = []
-    for idx in included_ids:
-        best_info = process_task_id(idx, model_names, id_to_decomp_per_model, ids, gt_list, outdir)
-        # enrich with request text if desired later
-        best_info["request"] = dict(zip(ids, requests_list)).get(idx, "")
-        best_rows.append(best_info)
-
-    write_summary_and_print_overall(best_rows, outdir)
+    # Initialize Oracle with models
+    oracle = Oracle(model_names, id_to_decomp_per_model)
+    oracle.run_all_tasks(included_ids, ids, gt_list, requests_list, outdir)
 
 
 if __name__ == "__main__":
