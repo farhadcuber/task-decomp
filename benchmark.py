@@ -173,7 +173,7 @@ def parse_args():
     ap = argparse.ArgumentParser(description="Benchmark multiple models via OpenRouter (single API key)")
     ap.add_argument("--prompt", default="PROMPT.txt", help="Path to base prompt file")
     ap.add_argument("--input", default="tasks.csv", help="Path to tasks CSV")
-    ap.add_argument("--outdir", default="out", help="Output directory")
+    ap.add_argument("--outputs_dir", default="outputs", help="Output directory")
     ap.add_argument("--max-rows", type=int, default=0, help="Max rows from input (0 = all)")
     ap.add_argument("--models-file", default="models.txt", help="Path to file with model slugs (one per line)")
     ap.add_argument("--models", default=None, help="Comma-separated model slugs to test (overrides/filters models-file). Accepts exact or substring matches.")
@@ -223,7 +223,7 @@ def load_models(args) -> List[str]:
 
 def main():
     args = parse_args()
-    ensure_outdir(args.outdir)
+    ensure_outdir(args.outputs_dir)
 
     # Load and optionally filter models
     models = load_models(args)
@@ -239,7 +239,7 @@ def main():
         base_prompt=base_prompt,
         tasks_col=tasks_col,
         rows=records,
-        outdir=args.outdir,
+        outdir=args.outputs_dir,
         timeout=args.timeout,
         retries=args.retries,
         sleep_s=args.sleep,
