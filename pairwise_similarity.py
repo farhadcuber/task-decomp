@@ -4,8 +4,8 @@ import os
 import sys
 import random
 import pandas as pd
-from typing import List, Dict
-from similarity import tokenize_plan, lcs_similarity, read_tasks, load_model_outputs
+from typing import List, Dict, Callable
+from similarity import tokenize_plan, lcs_similarity, tfidf_similarity, sbert_similarity, read_tasks, load_model_outputs
 
 
 def compute_included_ids(ids: List[str], present_id_sets: List[set]) -> List[str]:
@@ -14,6 +14,11 @@ def compute_included_ids(ids: List[str], present_id_sets: List[set]) -> List[str
     for s in present_id_sets:
         common &= s
     return [i for i in ids if i in common]
+
+
+def similarity_majority_voting(a_tokens: List[str], b_tokens: List[str]) -> float:
+    """Exact match similarity: 1.0 if decompositions are exactly the same, 0.0 otherwise."""
+    return 1.0 if a_tokens == b_tokens else 0.0
 
 
 class LLM:
@@ -30,10 +35,11 @@ class LLM:
 
 class Oracle:
     """Runs pairwise similarity, selects best model per task using score * reputation, and tracks reputation history."""
-    def __init__(self, model_names: List[str], id_to_decomp_per_model: List[Dict[str, str]]):
+    def __init__(self, model_names: List[str], id_to_decomp_per_model: List[Dict[str, str]], similarity_func: Callable = lcs_similarity):
         self.models: List[LLM] = [LLM(m) for m in model_names]
         self.model_names = model_names
         self.id_to_decomp_per_model = id_to_decomp_per_model
+        self.similarity_func = similarity_func
         self.history: List[Dict[str, float]] = []  # per task, map model name -> reputation
 
     def _build_similarity_matrix(self, idx: str) -> pd.DataFrame:
@@ -44,7 +50,7 @@ class Oracle:
             row_vals = []
             for b in range(len(self.models)):
                 b_tokens = token_lists[b]
-                sim = 1.0 if a == b else lcs_similarity(a_tokens, b_tokens)
+                sim = 1.0 if a == b else self.similarity_func(a_tokens, b_tokens)
                 row_vals.append(round(sim, 2))
             matrix.append(row_vals)
         df = pd.DataFrame(matrix, columns=self.model_names)
@@ -78,7 +84,7 @@ class Oracle:
         self.update_after_task(idx)
 
         # similarity to GT
-        sim_to_gt = round(lcs_similarity(token_lists[best_idx], tokenize_plan(gt_decomp)), 2)
+        sim_to_gt = round(self.similarity_func(token_lists[best_idx], tokenize_plan(gt_decomp)), 2)
 
         # write per-task matrix
         out_name = f"task_{idx}_pairwise_similarity.tsv"
@@ -162,12 +168,26 @@ def main():
         print("[ERROR] No task IDs are present in all model outputs; nothing to compare.")
         sys.exit(0)
 
-    outdir = os.path.join(args.outputs_dir, args.outdir)
-    os.makedirs(outdir, exist_ok=True)
+    # Define all similarity methods to run
+    similarity_methods = [
+        ("lcs", lcs_similarity),
+        ("tfidf", tfidf_similarity),
+        ("sbert", sbert_similarity),
+        ("majority_voting", similarity_majority_voting),
+    ]
 
-    # Initialize Oracle with models
-    oracle = Oracle(model_names, id_to_decomp_per_model)
-    oracle.run_all_tasks(included_ids, ids, gt_list, requests_list, outdir)
+    # Run for each similarity method
+    for method_name, similarity_func in similarity_methods:
+        print(f"\n{'='*60}")
+        print(f"Running with {method_name.upper()} similarity method")
+        print(f"{'='*60}\n")
+        
+        outdir = os.path.join(args.outputs_dir, f"pairwise_{method_name}")
+        os.makedirs(outdir, exist_ok=True)
+
+        # Initialize Oracle with models and similarity function
+        oracle = Oracle(model_names, id_to_decomp_per_model, similarity_func)
+        oracle.run_all_tasks(included_ids, ids, gt_list, requests_list, outdir)
 
 
 if __name__ == "__main__":
